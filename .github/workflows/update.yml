@@ -27,7 +27,7 @@ jobs:
       # 4. 【重要】ニュース収集＆掃除の実行！
       - name: Run app.py to update DB
         　env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          　GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python app.py
 
       # 5. 更新された news.db を君のGitHubに自動で上書き保存（プッシュ）
