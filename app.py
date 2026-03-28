@@ -68,8 +68,8 @@ def get_existing_summary(conn: sqlite3.Connection, title: str) -> Optional[str]:
 
 
 def ensure_db(conn: sqlite3.Connection) -> None:
-    conn.execute(
-        """
+    # 既存のニューステーブル
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS news (
             title TEXT PRIMARY KEY,
             summary TEXT NOT NULL,
@@ -77,8 +77,16 @@ def ensure_db(conn: sqlite3.Connection) -> None:
             embedding TEXT,
             fetched_at TEXT NOT NULL
         )
-        """
-    )
+    """)
+    # ★新設！消えない知識テーブル
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS knowledge (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT,
+            content TEXT NOT NULL,
+            embedding TEXT
+        )
+    """)
     conn.commit()
 
 
@@ -182,43 +190,51 @@ import numpy as np
 import json # ベクトルを復元するのに使うぜ
 
 def search_rag(query):
-    # 1. 質問をベクトルに変換（★お前が元々持っている関数を使う！）
+    # 1. 質問をベクトルに変換
     query_embedding = get_embedding(query)
-    
-    # 2. DBから全記事を取得（★列名をお前のDBに正確に合わせたぜ！）
-    conn = sqlite3.connect(DB_NAME)
-    df = pd.read_sql_query("SELECT title, summary, embedding FROM news WHERE embedding IS NOT NULL", conn)
-    conn.close()
-    
-    if df.empty:
-        return "まだ記事がないぜ。まずはニュースを取得してくれ。"
 
-    # 3. 類似度（スコア）を計算する
-    # jsonで保存されたベクトルをリスト→numpy配列に変換
+    # 2. DBから「ニュース」と「基礎知識」の両方を取得
+    conn = sqlite3.connect(DB_NAME)
+    
+    # ニュースの取得
+    df_news = pd.read_sql_query("SELECT title, summary, embedding FROM news WHERE embedding IS NOT NULL", conn)
+    
+    # 基礎知識の取得（categoryをtitleとして、contentをsummaryとして読み込んで形を揃える！）
+    try:
+        df_knowledge = pd.read_sql_query("SELECT category AS title, content AS summary, embedding FROM knowledge WHERE embedding IS NOT NULL", conn)
+    except Exception:
+        # もし知識テーブルがまだ無くてもエラーで落ちないようにするお守り
+        df_knowledge = pd.DataFrame(columns=["title", "summary", "embedding"])
+
+    conn.close()
+
+    # ★ニュースと知識をガッチャンコして1つのデータフレームにする！
+    df = pd.concat([df_news, df_knowledge], ignore_index=True)
+
+    if df.empty:
+        return "まだ記事も知識もないぜ。まずはデータを取得してくれ。"
+
+    # 3. 類似度(スコア)を計算する（君のNumpyロジックそのまま！）
     df["embedding"] = df["embedding"].apply(json.loads).apply(np.array)
     q_vec = np.array(query_embedding)
-    
-    # ベクトルの内積（角度の近さ）を計算してスコア列を作る
     df["score"] = df["embedding"].apply(lambda x: np.dot(x, q_vec))
-    
-    # 4. スコアが高い（意味が近い）上位3件だけを抜粋！
+
+    # 4. スコアが高い上位3件を抜粋！
     top_docs = df.sort_values("score", ascending=False).head(3)
     context_text = "\n\n".join([f"【{row['title']}】\n{row['summary']}" for _, row in top_docs.iterrows()])
 
-    # 5. 選ばれし少量のデータだけを軍師Geminiに渡す（API節約＆高精度！）
-    # 【修正】最新バージョンの genai に合わせた最強の呼び出し方だ！
+    # 5. 選ばれしデータを軍師Geminiに渡す
     client = genai.Client()
     final_prompt = f"""
-    お前は最強のAI軍師だ。以下の厳選されたニュースを基に、質問「{query}」に答えろ。
-    文字数は200文字以内、相棒のような熱い口調でな。
+お前は最強のAI軍師だ。以下の厳選されたデータ（最新ニュースと基礎知識）を基に、質問「{query}」に答えろ。
+文字数は200文字以内、相棒のような熱い口調でな。
 
-    【厳選データ】
-    {context_text}
-    """
-    
-    # ここが最新版の回答生成コマンドだ
+【厳選データ】
+{context_text}
+"""
+
     response = client.models.generate_content(
-        model='gemini-2.5-flash', 
+        model='gemini-2.5-flash',
         contents=final_prompt
     )
     return response.text
