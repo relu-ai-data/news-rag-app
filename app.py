@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 import os
 import re
 import sqlite3
@@ -73,6 +74,7 @@ def ensure_db(conn: sqlite3.Connection) -> None:
             title TEXT PRIMARY KEY,
             summary TEXT NOT NULL,
             url TEXT,
+            embedding TEXT,
             fetched_at TEXT NOT NULL
         )
         """
@@ -118,6 +120,13 @@ def save_news():
     ]
     
     conn = sqlite3.connect(DB_NAME)
+    
+    # 1. まず絶対に「部屋（テーブル）」を作る！
+    ensure_db(conn)
+    
+    # 2. 部屋ができたのを確認してから、掃除機を回す！
+    cleanup_old_news(conn, days=7)
+    
     cur = conn.cursor()
     saved_count = 0
     
@@ -145,8 +154,9 @@ def save_news():
                 
                 # 💾 本物のカラム（embedding）に直接保存！
                 cur.execute(
-                    "INSERT INTO news (title, summary, url, embedding) VALUES (?, ?, ?, ?)",
-                    (title, summary, url, embedding_json)
+                    # 150行目付近をこう書き換える！
+                    "INSERT INTO news (title, summary, url, embedding, fetched_at) VALUES (?, ?, ?, ?, ?)",
+                    (title, summary, url, embedding_json, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
                 )
                 
                 print(f"✅ 新規保存: {title}")
@@ -159,9 +169,16 @@ def save_news():
     conn.close()
     print(f"--- 完了！新しく {saved_count} 件のニュースを保存したぜ ---")
 
-import numpy as np
+def cleanup_old_news(conn, days=7):
+    """古いニュースを消すための『掃除機』を定義する"""
+    limit_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+    cur = conn.execute("DELETE FROM news WHERE fetched_at < ?", (limit_date,))
+    conn.commit()
+    if cur.rowcount > 0:
+        print(f"--- 🧹 古いニュースを {cur.rowcount} 件削除したぜ！ ---")
 
 import numpy as np
+
 import json # ベクトルを復元するのに使うぜ
 
 def search_rag(query):
@@ -243,3 +260,6 @@ def get_news_stats():
     except Exception as e:
         print(f"⚠️ グラフデータ作成エラー: {e}")
         return pd.DataFrame({"source": ["エラー"], "count": [0]})
+
+if __name__ == "__main__":
+            save_news()
