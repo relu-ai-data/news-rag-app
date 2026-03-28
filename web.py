@@ -11,66 +11,77 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- 🏰 サイドバー（管理パネル） ---
-with st.sidebar:
-    st.title("⚙️ 管理パネル")
-    st.write("世界一のデータサイエンティスト専用コンソール")
-    st.divider()
+# # --- 🏰 サイドバー（管理パネル） ---
+# with st.sidebar:
+#     st.title("⚙️ 管理パネル")
+#     st.write("世界一のデータサイエンティスト専用コンソール")
+#     st.divider()
     
-    if st.button("🌐 最新ニュースを今すぐ取得"):
-        with st.spinner("世界中の情報を収集・解析中..."):
-            save_news()
-            st.success("データベースの更新が完了したぜ！")
-            time.sleep(1)
-            st.rerun()
+#     if st.button("🌐 最新ニュースを今すぐ取得"):
+#         with st.spinner("世界中の情報を収集・解析中..."):
+#             save_news()
+#             st.success("データベースの更新が完了したぜ！")
+#             time.sleep(1)
+#             st.rerun()
             
-    st.divider()
+#     st.divider()
 
-    # --- 📊 本物のデータ連携グラフ ---
-    st.subheader("📊 リアルタイム統計")
-    try:
-        # app.pyの関数を使って本物のデータをDBから取ってくる！
-        chart_data = get_news_stats()
-        if not chart_data.empty:
-            # グラフの描画（色分け対応版）
-            st.bar_chart(chart_data, x="source", y="count", color="source")
-        else:
-            st.write("まだ記事がないぜ。取得ボタンを押せ！")
+#     # --- 📊 本物のデータ連携グラフ ---
+#     st.subheader("📊 リアルタイム統計")
+#     try:
+#         # app.pyの関数を使って本物のデータをDBから取ってくる！
+#         chart_data = get_news_stats()
+#         if not chart_data.empty:
+#             # グラフの描画（色分け対応版）
+#             st.bar_chart(chart_data, x="source", y="count", color="source")
+#         else:
+#             st.write("まだ記事がないぜ。取得ボタンを押せ！")
             
-    except Exception as e:
-        st.write("データ取得中... またはエラーだぜ。")
-        st.write(e)
+#     except Exception as e:
+#         st.write("データ取得中... またはエラーだぜ。")
+#         st.write(e)
 
-# --- ここから下が「戦利品リスト」の独立したブロックだ！ ---
-st.sidebar.markdown("---") 
-st.sidebar.subheader("🛡️ 最新の戦利品（10件）")
+# # --- ここから下が「戦利品リスト」の独立したブロックだ！ ---
+# st.sidebar.markdown("---") 
+# st.sidebar.subheader("🛡️ 最新の戦利品（10件）")
 
-import sqlite3
-import pandas as pd
+# import sqlite3
+# import pandas as pd
 
-try:
-    conn = sqlite3.connect("news.db")
-    # 魔法の言葉「ROWID DESC」で、最後に追加された10件を引っ張り出す！
-    df_latest = pd.read_sql_query("SELECT title, url FROM news ORDER BY ROWID DESC LIMIT 10", conn)
-    conn.close()
+# try:
+#     conn = sqlite3.connect("news.db")
+#     # 魔法の言葉「ROWID DESC」で、最後に追加された10件を引っ張り出す！
+#     df_latest = pd.read_sql_query("SELECT title, url FROM news ORDER BY ROWID DESC LIMIT 10", conn)
+#     conn.close()
 
-    if not df_latest.empty:
-        for index, row in df_latest.iterrows():
-            # Markdownの力で「クリックできるリンク付きの箇条書き」を錬成！
-            st.sidebar.markdown(f"- [{row['title']}]({row['url']})")
-    else:
-        st.sidebar.write("まだ戦利品はないぜ。")
+#     if not df_latest.empty:
+#         for index, row in df_latest.iterrows():
+#             # Markdownの力で「クリックできるリンク付きの箇条書き」を錬成！
+#             st.sidebar.markdown(f"- [{row['title']}]({row['url']})")
+#     else:
+#         st.sidebar.write("まだ戦利品はないぜ。")
         
-except Exception as e:
-    st.sidebar.error(f"⚠️ 戦利品の取得に失敗したぜ: {e}")
+# except Exception as e:
+#     st.sidebar.error(f"⚠️ 戦利品の取得に失敗したぜ: {e}")
 
-    st.divider()
-    st.write("▪️ ステータス: 稼働中")
-    st.write("▪️ エンジン: Gemini 2.5 Flash")
+#     st.divider()
+#     st.write("▪️ ステータス: 稼働中")
+#     st.write("▪️ エンジン: Gemini 2.5 Flash")
     
-    if st.button("会話履歴を消去"):
-        st.session_state.messages = []
-        st.rerun()
+#     if st.button("会話履歴を消去"):
+#         st.session_state.messages = []
+#         st.rerun()
+# --- 魔法のCSS（ここを追記！） ---
+st.markdown("""
+    <style>
+        /* 右上のメニューボタン（三本線）やヘッダーを完全に隠す */
+        header {visibility: hidden;}
+        /* 一番下の「Made with Streamlit」を消す */
+        footer {visibility: hidden;}
+        /* スマホの画面の端っこまでチャット領域を広げる */
+        .block-container {padding-top: 1rem; padding-bottom: 0rem;}
+    </style>
+""", unsafe_allow_html=True)
 
 # --- 🧠 チャット部分 ---
 if "messages" not in st.session_state:
