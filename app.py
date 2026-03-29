@@ -12,6 +12,18 @@ from dotenv import load_dotenv
 import os
 from google import genai
 
+def chunk_text(text, chunk_size=150, overlap=30):
+    """長い文章を指定サイズで切り刻む関数"""
+    if not text:
+        return []
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunks.append(text[start:end])
+        start += chunk_size - overlap
+    return chunks
+
 # .envファイルからAPIキー（通行証）を読み込む！
 load_dotenv()
 
@@ -116,8 +128,8 @@ def save_news():
     """複数のRSSからニュースを狩り集める真の広域スクレイピング版"""
     import feedparser
     import json
+    from datetime import datetime
     
-    # 🎯 特盛りリスト
     feed_urls = [
         "https://news.yahoo.co.jp/rss/topics/it.xml",
         "https://rss.itmedia.co.jp/rss/2.0/news_bursts.xml",
@@ -126,7 +138,7 @@ def save_news():
         "https://ascii.jp/ai/rss.xml",
         "https://jp.techcrunch.com/feed/",
     ]
-    
+
     conn = sqlite3.connect(DB_NAME)
     
     # 1. まず絶対に「部屋（テーブル）」を作る！
@@ -137,45 +149,61 @@ def save_news():
     
     cur = conn.cursor()
     saved_count = 0
-    
+
     print("--- 🌐 広域ニュース収集を開始 ---")
-    
+
     for feed_url in feed_urls:
         print(f"📡 取得中: {feed_url}")
         feed = feedparser.parse(feed_url)
-        
-        # ⚡️ リミッター解除（全部狩る！）
+
+        # ⚡ リミッター解除(全部狩る！)
         for entry in feed.entries:
             try:
                 title = entry.title
                 url = entry.link
                 summary = entry.get('summary', title)
-                
-                # 🛡️ 真の重複チェック（URLがすでにDBにあるか確認）
+
+                # 🛡 真の重複チェック(URLがすでにDBにあるか確認)
                 cur.execute("SELECT 1 FROM news WHERE url = ?", (url,))
-                if cur.fetchone():
-                    continue # すでにあるならスキップ！
-                
-                # ⚡️ ベクトルを生成（さっき直した最強の杖を発動）
-                embedding_vector = get_embedding(summary)
-                embedding_json = json.dumps(embedding_vector)
-                
-                # 💾 本物のカラム（embedding）に直接保存！
-                cur.execute(
-                    # 150行目付近をこう書き換える！
-                    "INSERT INTO news (title, summary, url, embedding, fetched_at) VALUES (?, ?, ?, ?, ?)",
-                    (title, summary, url, embedding_json, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-                )
-                
-                print(f"✅ 新規保存: {title}")
-                saved_count += 1
+                exists = cur.fetchone()
+
+                if exists:
+                    # すでにニュースとして存在しているなら、この記事全体の処理をスキップ
+                    print(f"⏩ スキップ（既読）: {title}")
+                    continue 
+
+                # --- ここからチャンク処理 ---
+                # 1. 長いsummaryを切り刻む
+                chunks = chunk_text(summary, chunk_size=150, overlap=30)
+
+                # 万が一テキストが空でチャンクが作れなかった場合はスキップ
+                if not chunks:
+                    continue
+
+                # 2. 切り刻んだチャンク「ごと」にループして保存する
+                for i, chunk in enumerate(chunks):
+                    # ベクトルを生成（チャンクのテキストに対して実行！）
+                    embedding_vector = get_embedding(chunk)
+                    embedding_json = json.dumps(embedding_vector)
                     
+                    # チャンクが複数ある場合、後で見て分かるようにタイトルに番号を振る
+                    chunk_title = f"{title} [{i+1}/{len(chunks)}]"
+                    
+                    cur.execute(
+                        "INSERT INTO news (title, summary, url, embedding, fetched_at) VALUES (?, ?, ?, ?, ?)",
+                        (chunk_title, chunk, url, embedding_json, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                    )
+                
+                print(f"✅ 新規保存: {title} ({len(chunks)}チャンクに分割)")
+                saved_count += 1
+
             except Exception as e:
                 print(f"⚠️ 保存スキップ（エラー）: {e}")
-                
+
+    # === forループが全部終わった後の処理 ===
     conn.commit()
     conn.close()
-    print(f"--- 完了！新しく {saved_count} 件のニュースを保存したぜ ---")
+    print(f"--- ✨完了: 新規ニュースを {saved_count} 件保存しました ---")
 
 def cleanup_old_news(conn, days=7):
     """古いニュースを消すための『掃除機』を定義する"""
@@ -183,13 +211,13 @@ def cleanup_old_news(conn, days=7):
     cur = conn.execute("DELETE FROM news WHERE fetched_at < ?", (limit_date,))
     conn.commit()
     if cur.rowcount > 0:
-        print(f"--- 🧹 古いニュースを {cur.rowcount} 件削除したぜ！ ---")
+        print(f"--- 🧹 古いニュースを {cur.rowcount} 件削除しました ---")
 
 import numpy as np
 
 import json # ベクトルを復元するのに使うぜ
 
-def search_rag(query):
+def search_rag(query, chat_history=""):
     # 1. 質問をベクトルに変換
     query_embedding = get_embedding(query)
 
@@ -212,7 +240,7 @@ def search_rag(query):
     df = pd.concat([df_news, df_knowledge], ignore_index=True)
 
     if df.empty:
-        return "まだ記事も知識もないぜ。まずはデータを取得してくれ。"
+        return "📂 データが見つかりません。先にデータ収集を実行してください。"
 
     # 3. 類似度(スコア)を計算する（君のNumpyロジックそのまま！）
     df["embedding"] = df["embedding"].apply(json.loads).apply(np.array)
@@ -226,8 +254,12 @@ def search_rag(query):
     # 5. 選ばれしデータを軍師Geminiに渡す
     client = genai.Client()
     final_prompt = f"""
-お前は最強のAI軍師だ。以下の厳選されたデータ（最新ニュースと基礎知識）を基に、質問「{query}」に答えろ。
-文字数は200文字以内、相棒のような熱い口調でな。
+あなたはニュース解説を行う優秀なアシスタントです。
+これまでの会話文脈を踏まえ、以下の厳選されたデータを基に、最新の質問「{query}」に客観的かつ簡潔に答えてください。
+余計な装飾やキャラクター性は不要です。事実のみを200文字以内でまとめてください。
+
+【これまでの会話文脈】
+{chat_history}
 
 【厳選データ】
 {context_text}
@@ -243,7 +275,7 @@ import sqlite3
 import pandas as pd
 
 def get_news_stats():
-    """URLから情報源を分析し、鮮やかな分割グラフの元データを作る関数だ！"""
+    """📊 URLから情報源を分類し、分析グラフ用の集計データを生成する関数"""
     import pandas as pd
     import sqlite3
     
@@ -278,4 +310,5 @@ def get_news_stats():
         return pd.DataFrame({"source": ["エラー"], "count": [0]})
 
 if __name__ == "__main__":
-            save_news()
+    print("🚀 ニュース収集バッチを手動起動します...")
+    save_news()
