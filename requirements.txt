@@ -1,6 +1,8 @@
+google-generativeai
 streamlit
-google-genai
 pandas
 numpy
 feedparser
+beautifulsoup4
 python-dotenv
+jaconv
