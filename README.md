@@ -1,4 +1,4 @@
-# 🤖 AI News 解説ボット（Dual-Knowledge RAG Architecture）
+# 📰 AI News Insight Bot (Dual-Knowledge RAG Architecture)
 
 最新のAIニュースと基礎知識を組み合わせて回答する、**RAGベースのニュース解説アプリ**です。  
 ITリテラシーが高くないユーザー（自身の家族）でも迷わず使えることを目的に、**チャット入力中心のシンプルなUI**と、**時事ニュース＋静的知識を組み合わせた二層RAG構成**で設計しました。
