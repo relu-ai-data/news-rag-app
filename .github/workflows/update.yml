@@ -32,6 +32,6 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add -f news.db
-          # 変更がある場合のみコミットし、なければエラーを出さずに終了する魔法の記述
+          # 変更がある場合のみコミットし、なければ正常終了させる（これがプロの流儀だ）
           git diff --cached --quiet || git commit -m "Auto-update news.db"
           git push
